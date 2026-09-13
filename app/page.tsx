@@ -52,13 +52,35 @@ const initialMessage: Message = {
 };
 const crisisPattern = /死にたい|自殺|消えたい|生きていたくない|終わりにしたい|自分を傷つけ|殺して|suicid|kill myself|hurt myself/i;
 
-function extractReflection(input: string) {
+function cleanReflectionPart(value: string) {
+  return value.trim().replace(/\s*(?:という)?こと[。．.]?$/, "");
+}
+
+function extractReflection(input: string, history: Message[]) {
   const fact = input.match(/(?:今(?:わか|分)っている(?:現実|事実)|(?:現実|事実))\s*[:：]\s*([\s\S]*?)(?=\s*(?:(?:自分が)?(?:加|抱|咥)えている)?解釈\s*[:：]|\s*(?:本当は)?大切にしたいこと\s*[:：]|$)/i)?.[1]?.trim();
   const interpretation = input.match(/(?:(?:自分が)?(?:加|抱|咥)えている)?解釈\s*[:：]\s*([\s\S]*?)(?=\s*(?:本当は)?大切にしたいこと\s*[:：]|$)/i)?.[1]?.trim();
   const value = input.match(/(?:本当は)?大切にしたいこと\s*[:：]\s*([\s\S]+)$/i)?.[1]?.trim();
 
-  if (!fact || !interpretation || !value) return null;
-  return { fact, interpretation, value };
+  if (fact && interpretation && value) {
+    return {
+      fact: cleanReflectionPart(fact),
+      interpretation: cleanReflectionPart(interpretation),
+      value: cleanReflectionPart(value),
+    };
+  }
+
+  const answersReflectionPrompt = history.some(
+    (message) => message.role === "assistant" && message.text.includes("①いま分かっている事実"),
+  );
+  if (!answersReflectionPrompt) return null;
+
+  const parts = input
+    .split(/\s*(?:、|，|,|\n+)\s*/)
+    .map(cleanReflectionPart)
+    .filter(Boolean);
+  if (parts.length !== 3) return null;
+
+  return { fact: parts[0], interpretation: parts[1], value: parts[2] };
 }
 
 function replyFor(input: string, history: Message[]): Omit<Message, "id"> {
@@ -68,7 +90,7 @@ function replyFor(input: string, history: Message[]): Omit<Message, "id"> {
       text: "いま、とても切迫した苦しさの中にいるのですね。ここで一人で抱え続けないでください。今すぐ自分を傷つける可能性がある場合は、119（救急）または110へ連絡し、安全な場所で信頼できる人にそばにいてもらってください。厚生労働省の相談先一覧では、電話やSNSの窓口を選べます。私は緊急支援の代わりにはなれませんが、連絡する相手や最初の一言を一緒に考えることはできます。いま、あなたの近くに連絡できる人はいますか？",
     };
   }
-  const reflection = extractReflection(input);
+  const reflection = extractReflection(input, history);
   if (reflection) {
     const aiGoal = /AI|人工知能|チャットボット/i.test(reflection.value);
     const experiments = aiGoal
