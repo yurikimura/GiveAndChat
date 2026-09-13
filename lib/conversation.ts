@@ -35,7 +35,7 @@ export type StageDecision = {
     | "future_prediction_captured"
     | "reduce_load"
     | "experiment_selected"
-    | "clarify_experiment"
+    | "custom_experiment"
     | "prototype_scope_selected"
     | "action_follow_up"
     | "continue_openly";
@@ -89,10 +89,10 @@ export function extractReflection(input: string): Reflection | null {
 }
 
 function numberedChoice(input: string): 1 | 2 | 3 | null {
-  const value = input.trim();
-  if (/^(?:①|1)(?:[。．.)）]|番)?$/.test(value)) return 1;
-  if (/^(?:②|2)(?:[。．.)）]|番)?$/.test(value)) return 2;
-  if (/^(?:③|3)(?:[。．.)）]|番)?$/.test(value)) return 3;
+  const value = normalize(input);
+  if (/^(?:①|1)(?:番|つ目|を選ぶ?|にする|で(?:す|お願いします)?)?$/.test(value)) return 1;
+  if (/^(?:②|2)(?:番|つ目|を選ぶ?|にする|で(?:す|お願いします)?)?$/.test(value)) return 2;
+  if (/^(?:③|3)(?:番|つ目|を選ぶ?|にする|で(?:す|お願いします)?)?$/.test(value)) return 3;
   return null;
 }
 
@@ -100,40 +100,73 @@ export function detectExperimentChoice(input: string): 1 | 2 | 3 | null {
   const numbered = numberedChoice(input);
   if (numbered) return numbered;
 
-  const value = input.replace(/\s+/g, "");
-  if (
-    /(?:小さ|ミニ|簡単|まず|試作|プロトタイプ).*(?:相談|対話|心|メンタル)?(?:AI|人工知能|チャットボット).*(?:作|始|試)|(?:相談|対話|心|メンタル)(?:AI|人工知能|チャットボット).*(?:作|始|試)/i.test(
-      value,
-    )
-  ) {
-    return 1;
-  }
-  if (
-    /(?:心理|メンタル|支援).*(?:研究者|研究する人|専門家).*(?:話|聞|相談)|(?:研究者|研究する人|専門家).*(?:話|聞|相談)/i.test(
-      value,
-    )
-  ) {
-    return 2;
-  }
-  if (
-    /(?:別|他).*(?:大学院|研究室).*(?:調|探|見る)|(?:大学院|研究室).*(?:3|三)つ.*(?:調|探)/i.test(
-      value,
-    )
-  ) {
-    return 3;
-  }
-  return null;
+  return bestAliasMatch(input, [
+    [
+      "小さな相談ai",
+      "相談ai",
+      "対話ai",
+      "心に寄り添うai",
+      "チャットボット",
+      "プロトタイプ",
+      "試作品",
+      "aiを作る",
+      "aiを始める",
+      "アプリを作る",
+      "まず作る",
+    ],
+    [
+      "心理支援を研究する人",
+      "研究者に話を聞く",
+      "研究者に聞く",
+      "専門家に話を聞く",
+      "専門家に聞く",
+      "心理の人に相談",
+      "インタビュー",
+    ],
+    [
+      "別の大学院",
+      "他の大学院",
+      "研究室を調べる",
+      "大学院を調べる",
+      "進路を調べる",
+      "別の経路",
+      "再受験",
+    ],
+  ]);
 }
 
 export function detectPrototypeScope(input: string): 1 | 2 | 3 | null {
   const numbered = numberedChoice(input);
   if (numbered) return numbered;
 
-  const value = input.replace(/\s+/g, "");
-  if (/悩み|対象|ユーザー|場面|誰.*支え/i.test(value)) return 1;
-  if (/対話|会話|ターン|流れ|ループ/i.test(value)) return 2;
-  if (/Adam|Grant|グラント|資料|根拠|対応表|出典/i.test(value)) return 3;
-  return null;
+  return bestAliasMatch(input, [
+    ["悩み", "対象", "ユーザー", "場面", "誰を支える", "ユースケース", "ペルソナ"],
+    ["対話", "会話", "ターン", "流れ", "ループ", "質問設計", "会話フロー"],
+    ["adam", "grant", "グラント", "資料", "根拠", "対応表", "出典", "文献"],
+  ]);
+}
+
+function normalize(value: string) {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\s　。、，,.!！?？「」『』（）()・ー-]/g, "");
+}
+
+function bestAliasMatch(
+  input: string,
+  choices: [string[], string[], string[]],
+): 1 | 2 | 3 | null {
+  const value = normalize(input);
+  const scores = choices.map((aliases) =>
+    aliases.reduce((score, alias) => {
+      const candidate = normalize(alias);
+      return value.includes(candidate) ? score + Math.max(2, candidate.length) : score;
+    }, 0),
+  );
+  const best = Math.max(...scores);
+  if (best === 0) return null;
+  return (scores.indexOf(best) + 1) as 1 | 2 | 3;
 }
 
 export function advanceConversation(
@@ -172,7 +205,7 @@ export function advanceConversation(
     case "experiment_choice": {
       const selection = detectExperimentChoice(input);
       if (!selection) {
-        return { from, to: from, intent: "clarify_experiment" };
+        return { from, to: "action_plan", intent: "custom_experiment" };
       }
       return {
         from,
@@ -208,7 +241,58 @@ export type GeneratedReply = {
   intent: StageDecision["intent"];
 };
 
-export function fallbackReply(decision: StageDecision, input: string): GeneratedReply {
+export type ConversationMemory = {
+  reflection?: Reflection;
+  experimentChoice?: 1 | 2 | 3 | "custom";
+  prototypeScope?: 1 | 2 | 3 | "custom";
+  uncertaintyCount: number;
+  turnCount: number;
+};
+
+export const INITIAL_MEMORY: ConversationMemory = {
+  uncertaintyCount: 0,
+  turnCount: 0,
+};
+
+function topicReply(input: string): Pick<GeneratedReply, "text" | "sourceIds"> | null {
+  if (/与え|助け|断れ|頼ま|疲れ|燃え尽|バーンアウト|giver|give/i.test(input)) {
+    return {
+      sourceIds: ["give"],
+      text: "人を助けたい気持ちと、もう余力がない感覚が同時にあるのかもしれません。『Give and Take』の視点では、与えることを続けるには、自分を守る境界線も必要です。いまの状況を、①実際に引き受けていること、②断ると起きると思っていること、③本当は守りたい時間や気力、の3つに分けると何が入りそうでしょう？",
+    };
+  }
+  if (/失敗|落ちた|不合格|できない|才能|成長|自信|遅れ|向いて|劣っ|だめ|ダメ/i.test(input)) {
+    return {
+      sourceIds: ["potential", "rethink"],
+      text: "その結果を、自分の価値や未来全体の判定のように感じているのかもしれません。『Hidden Potential』では現在地だけでなく、これから学べる範囲と進んだ距離を見ます。まず、①確認できる事実、②そこから加えた解釈、③それでも大切にしたいこと、の3つに一度だけ分けると何が入りそうでしょう？",
+    };
+  }
+  if (/決め|迷|考えすぎ|正解|意見|対立|間違|思い込|不安/i.test(input)) {
+    return {
+      sourceIds: ["rethink"],
+      text: "確実な正解を探すほど、動けなくなることがあります。『Think Again』の視点で、いまの考えを結論ではなく仮説として扱ってみましょう。①確認できる事実、②自分の予測や解釈、③判断で守りたいもの、の3つに分けると何が入りそうでしょう？",
+    };
+  }
+  if (/意味|やる気|空虚|むなし|停滞|仕事|頑張れ|動け/i.test(input)) {
+    return {
+      sourceIds: ["research", "potential"],
+      text: "やる気の欠如を、意志の弱さだけで説明しなくて大丈夫です。まず状況を、①実際に起きていること、②自分に下している評価、③本当は誰にどう役立ちたいか、の3つに分けてみましょう。それぞれに何が入りそうでしょう？",
+    };
+  }
+  if (/怖|挑戦|始め|アイデア|創造|先延ば|完璧/i.test(input)) {
+    return {
+      sourceIds: ["originals"],
+      text: "怖さや迷いは、挑戦に向いていない証拠とは限りません。『Originals』の視点で、①いま確かに分かっていること、②失敗すると予測していること、③それでも試したい理由、の3つに分けると何が入りそうでしょう？",
+    };
+  }
+  return null;
+}
+
+export function fallbackReply(
+  decision: StageDecision,
+  input: string,
+  memory: ConversationMemory = INITIAL_MEMORY,
+): GeneratedReply {
   const base = {
     stage: decision.to,
     intent: decision.intent,
@@ -275,6 +359,13 @@ export function fallbackReply(decision: StageDecision, input: string): Generated
   }
 
   if (decision.intent === "reduce_load") {
+    if (memory.uncertaintyCount >= 1) {
+      return {
+        ...base,
+        sourceIds: ["rethink"],
+        text: "まだ言葉にならないのですね。いま答えを出す必要はありません。同じ問いはここで止めます。続けるなら、考える代わりに「いちばん重い感じが体のどこにあるか」だけ書いても構いませんし、何も書かずに休んでも大丈夫です。",
+      };
+    }
     if (decision.from === "experiment_choice") {
       return {
         ...base,
@@ -302,23 +393,76 @@ export function fallbackReply(decision: StageDecision, input: string): Generated
     };
   }
 
-  if (decision.intent === "clarify_experiment") {
+  if (decision.intent === "custom_experiment") {
     return {
       ...base,
-      text: `「${input}」という考えも含めて受け取りました。先ほどの選択肢に無理に合わせる必要はありません。それを30日で確かめられる小さな実験にすると、最初の一歩は何になりそうでしょう？`,
+      sourceIds: ["potential", "originals"],
+      text: `「${input}」を、選択肢にないあなた自身の実験として受け取りました。用意された候補へ戻す必要はありません。『Hidden Potential』の視点で、成功の証明ではなく情報を一つ得る実験に変えるなら、今日20分でどこまで試せそうでしょう？`,
     };
   }
 
   if (decision.intent === "start_reflection") {
+    const tailored = topicReply(input);
+    if (tailored) return { ...base, ...tailored };
     return {
       ...base,
       text: "話してくれてありがとうございます。結論を急がず、いまの状況を一度だけ整理してみましょう。①確認できる事実、②そこから自分が加えている解釈、③本当は大切にしたいこと——それぞれに何が入りそうでしょう？",
     };
   }
 
+  if (decision.intent === "action_follow_up" && memory.experimentChoice === 1) {
+    const focus = memory.prototypeScope === 1
+      ? "支える悩み・場面"
+      : memory.prototypeScope === 2
+        ? "5ターンの会話設計"
+        : memory.prototypeScope === 3
+          ? "資料と回答の対応表"
+          : "選んだ試作品の範囲";
+    return {
+      ...base,
+      sourceIds: ["potential", "originals"],
+      text: `「${input}」まで具体化できました。いまの焦点は「${focus}」です。完成度ではなく、次に使える情報を得ることを成功条件にしましょう。この一歩を実際に始める日時を一つ決めるなら、いつが現実的ですか？`,
+    };
+  }
+
+  if (decision.intent === "continue_openly") {
+    const tailored = topicReply(input);
+    if (tailored) return { ...base, ...tailored };
+  }
+
   return {
     ...base,
     sourceIds: ["rethink", "potential"],
     text: `「${input}」を、ここまでの会話につながる言葉として受け取りました。いま大切にしたい目的を失わずに、次の一歩をさらに小さくすると何ができそうでしょう？`,
+  };
+}
+
+export function createLocalResponse(
+  stage: ConversationStage,
+  input: string,
+  memory: ConversationMemory,
+): { reply: GeneratedReply; memory: ConversationMemory } {
+  const decision = advanceConversation(stage, input);
+  const nextMemory: ConversationMemory = {
+    ...memory,
+    turnCount: memory.turnCount + 1,
+    uncertaintyCount:
+      decision.intent === "reduce_load" ? memory.uncertaintyCount + 1 : 0,
+  };
+
+  if (decision.reflection) nextMemory.reflection = decision.reflection;
+  if (decision.intent === "experiment_selected" && decision.selection) {
+    nextMemory.experimentChoice = decision.selection;
+  }
+  if (decision.intent === "custom_experiment") {
+    nextMemory.experimentChoice = "custom";
+  }
+  if (decision.intent === "prototype_scope_selected") {
+    nextMemory.prototypeScope = decision.selection ?? "custom";
+  }
+
+  return {
+    reply: fallbackReply(decision, input, memory),
+    memory: nextMemory,
   };
 }

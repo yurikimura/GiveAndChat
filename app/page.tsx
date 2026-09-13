@@ -2,8 +2,9 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  advanceConversation,
-  fallbackReply,
+  createLocalResponse,
+  INITIAL_MEMORY,
+  type ConversationMemory,
   type ConversationStage,
 } from "@/lib/conversation";
 import { SOURCES, type SourceId } from "@/lib/grant-knowledge";
@@ -14,15 +15,6 @@ type Message = {
   text: string;
   sourceIds?: SourceId[];
   urgent?: boolean;
-};
-
-type ChatResponse = {
-  text: string;
-  stage: ConversationStage;
-  sourceIds: SourceId[];
-  urgent?: boolean;
-  mode: "openai" | "fallback" | "safety";
-  notice?: string;
 };
 
 const prompts = [
@@ -53,10 +45,10 @@ function LeafMark() {
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([initialMessage]);
   const [stage, setStage] = useState<ConversationStage>("opening");
+  const [memory, setMemory] = useState<ConversationMemory>(INITIAL_MEMORY);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [serviceNotice, setServiceNotice] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const nextIdRef = useRef(2);
 
@@ -70,81 +62,51 @@ export default function Home() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, isThinking]);
 
-  async function submit(value: string) {
+  function submit(value: string) {
     const text = value.trim();
     if (!text || isThinking) return;
 
     const userMessage: Message = { id: nextIdRef.current++, role: "user", text };
-    const requestMessages = [...messages, userMessage].map((message) => ({
-      role: message.role,
-      text: message.text,
-    }));
-    const currentStage = stage;
+    const result = createLocalResponse(stage, text, memory);
 
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setIsThinking(true);
-    setServiceNotice(null);
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: currentStage, messages: requestMessages }),
-      });
-      if (!response.ok) throw new Error("Chat request failed");
-
-      const generated = (await response.json()) as ChatResponse;
+    window.setTimeout(() => {
       setMessages((current) => [
         ...current,
         {
           id: nextIdRef.current++,
           role: "assistant",
-          text: generated.text,
-          sourceIds: generated.sourceIds,
-          urgent: generated.urgent,
+          text: result.reply.text,
+          sourceIds: result.reply.sourceIds,
+          urgent: result.reply.urgent,
         },
       ]);
-      setStage(generated.stage);
-      setServiceNotice(generated.notice ?? null);
-    } catch {
-      const decision = advanceConversation(currentStage, text);
-      const fallback = fallbackReply(decision, text);
-      setMessages((current) => [
-        ...current,
-        {
-          id: nextIdRef.current++,
-          role: "assistant",
-          text: fallback.text,
-          sourceIds: fallback.sourceIds,
-          urgent: fallback.urgent,
-        },
-      ]);
-      setStage(fallback.stage);
-      setServiceNotice("接続できなかったため、会話ステージに基づく応答を表示しています。");
-    } finally {
+      setStage(result.reply.stage);
+      setMemory(result.memory);
       setIsThinking(false);
-    }
+    }, 420);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void submit(input);
+    submit(input);
   }
 
   function resetConversation() {
     setMessages([{ ...initialMessage, id: nextIdRef.current++ }]);
     setStage("opening");
+    setMemory(INITIAL_MEMORY);
     setInput("");
     setSourcesOpen(false);
-    setServiceNotice(null);
   }
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="Give & Chat ホーム"><LeafMark /><span>Give <i>&</i> Chat</span></a>
-        <div className="top-actions"><span className="privacy-badge"><span /> 文脈を引き継いで応答</span><button className="text-button" onClick={resetConversation} type="button">会話をリセット</button></div>
+        <div className="top-actions"><span className="privacy-badge"><span /> この会話は端末内のみ</span><button className="text-button" onClick={resetConversation} type="button">会話をリセット</button></div>
       </header>
 
       <section className="workspace" id="top">
@@ -152,11 +114,11 @@ export default function Home() {
           <div className="intro">
             <p className="eyebrow">A QUIET PLACE TO RETHINK</p>
             <h1>少し立ち止まって、<br /><em>考え直す</em>時間を。</h1>
-            <p className="intro-copy">組織心理学者 Adam Grant氏の研究・著作を手がかりに、会話の流れを保ちながら気持ちを整理する対話ガイドです。</p>
+            <p className="intro-copy">組織心理学者 Adam Grant氏の研究・著作を手がかりに、外部AIへ送信せず、会話の流れを保ちながら気持ちを整理する対話ガイドです。</p>
           </div>
 
           {messages.length === 1 && <div className="prompt-grid" aria-label="相談例">
-            {prompts.map((prompt, index) => <button key={prompt} onClick={() => void submit(prompt)} type="button"><span>0{index + 1}</span>{prompt}<ArrowIcon /></button>)}
+            {prompts.map((prompt, index) => <button key={prompt} onClick={() => submit(prompt)} type="button"><span>0{index + 1}</span>{prompt}<ArrowIcon /></button>)}
           </div>}
 
           <div className="messages" aria-live="polite">
@@ -172,13 +134,12 @@ export default function Home() {
           </div>
 
           <form className="composer" onSubmit={handleSubmit}>
-            {serviceNotice && <p className="service-notice" role="status">{serviceNotice}</p>}
             <label htmlFor="chat-input">いま感じていることを、まとまっていなくても大丈夫です</label>
             <div className="composer-row">
-              <textarea id="chat-input" maxLength={4000} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(input); } }} placeholder="ここに書いてください…" rows={2} value={input} />
+              <textarea id="chat-input" maxLength={4000} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); submit(input); } }} placeholder="ここに書いてください…" rows={2} value={input} />
               <button disabled={!input.trim() || isThinking} type="submit" aria-label="メッセージを送信"><ArrowIcon /></button>
             </div>
-            <p className="composer-help"><span>改行：Enter　送信：⌘/Ctrl + Enter</span><span>回答生成のため直近の会話をOpenAI APIへ送信します。アプリのデータベースには保存しません。</span><span>診断や治療を行うサービスではありません。緊急時は119・110、または公的な相談窓口へ。</span></p>
+            <p className="composer-help"><span>改行：Enter　送信：⌘/Ctrl + Enter</span><span>入力内容は外部サービスへ送信せず、この画面を閉じると消えます。</span><span>診断や治療を行うサービスではありません。緊急時は119・110、または公的な相談窓口へ。</span></p>
           </form>
         </div>
 
@@ -187,7 +148,7 @@ export default function Home() {
           <div className="source-panel-inner">
             <p className="eyebrow">THE THINKING BEHIND IT</p>
             <h2>答えより、<br />良い問いを。</h2>
-            <p className="source-lead">Grant氏本人を再現するものではありません。公開された研究・著作の要約と会話履歴を、対話の文脈として使います。</p>
+            <p className="source-lead">Grant氏本人を再現するものではありません。公開された研究・著作の要約と、端末内の会話ステートを組み合わせています。</p>
             <div className="principle-list">
               <div><span>01</span><p><strong>科学者の姿勢</strong>意見をアイデンティティにせず、仮説として確かめる。</p></div>
               <div><span>02</span><p><strong>持続可能なギブ</strong>他者への貢献と、自分を守る境界線を両立する。</p></div>

@@ -60,7 +60,6 @@ button:focus-visible,a:focus-visible,textarea:focus-visible { outline:3px solid 
 .composer-help { margin:9px 4px 0; color:#809087; font-size:9px; line-height:1.5; display:grid; grid-template-columns:auto 1fr; gap:3px 16px; }
 .composer-help span:first-child { color:#60746a; font-weight:700; white-space:nowrap; }
 .composer-help span:last-child { grid-column:2; }
-.service-notice { margin:0 4px 8px; color:#6e5d22; background:#fff8d9; border:1px solid #e6d88d; border-radius:9px; padding:8px 10px; font-size:10px; line-height:1.5; }
 .source-panel { background:var(--forest); color:#f1f2e9; min-height:calc(100vh - 76px); }
 .source-panel-inner { position:sticky; top:76px; height:calc(100vh - 76px); padding:clamp(36px,5vh,62px) clamp(28px,3.5vw,54px); overflow-y:auto; }
 .source-panel .eyebrow { color:#9eb7ab; }
