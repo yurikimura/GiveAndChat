@@ -39,7 +39,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible { outline:3px solid 
 .message-meta .leaf-mark { width:18px; height:18px; }
 .message-meta .leaf-mark>span { width:8px; height:14px; left:2px; top:1px; }
 .message-meta .leaf-mark>span:last-child { width:6px; height:10px; left:9px; top:6px; }
-.message p { margin:0; line-height:1.9; font-size:14px; }
+.message p { margin:0; line-height:1.9; font-size:14px; white-space:pre-wrap; }
 .message.user p { line-height:1.75; }
 .inline-source { margin-top:14px; padding-top:12px; border-top:1px solid #e5e6df; color:var(--forest); display:flex; align-items:center; gap:7px; text-decoration:none; font-size:11px; font-weight:700; }
 .inline-source span { color:#89968f; font-weight:400; }

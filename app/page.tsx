@@ -52,11 +52,32 @@ const initialMessage: Message = {
 };
 const crisisPattern = /死にたい|自殺|消えたい|生きていたくない|終わりにしたい|自分を傷つけ|殺して|suicid|kill myself|hurt myself/i;
 
-function replyFor(input: string): Omit<Message, "id"> {
+function extractReflection(input: string) {
+  const fact = input.match(/(?:今(?:わか|分)っている(?:現実|事実)|(?:現実|事実))\s*[:：]\s*([\s\S]*?)(?=\s*(?:(?:自分が)?(?:加|抱|咥)えている)?解釈\s*[:：]|\s*(?:本当は)?大切にしたいこと\s*[:：]|$)/i)?.[1]?.trim();
+  const interpretation = input.match(/(?:(?:自分が)?(?:加|抱|咥)えている)?解釈\s*[:：]\s*([\s\S]*?)(?=\s*(?:本当は)?大切にしたいこと\s*[:：]|$)/i)?.[1]?.trim();
+  const value = input.match(/(?:本当は)?大切にしたいこと\s*[:：]\s*([\s\S]+)$/i)?.[1]?.trim();
+
+  if (!fact || !interpretation || !value) return null;
+  return { fact, interpretation, value };
+}
+
+function replyFor(input: string, history: Message[]): Omit<Message, "id"> {
   if (crisisPattern.test(input)) {
     return {
       role: "assistant", urgent: true, source: SOURCES.crisis,
       text: "いま、とても切迫した苦しさの中にいるのですね。ここで一人で抱え続けないでください。今すぐ自分を傷つける可能性がある場合は、119（救急）または110へ連絡し、安全な場所で信頼できる人にそばにいてもらってください。厚生労働省の相談先一覧では、電話やSNSの窓口を選べます。私は緊急支援の代わりにはなれませんが、連絡する相手や最初の一言を一緒に考えることはできます。いま、あなたの近くに連絡できる人はいますか？",
+    };
+  }
+  const reflection = extractReflection(input);
+  if (reflection) {
+    const aiGoal = /AI|人工知能|チャットボット/i.test(reflection.value);
+    const experiments = aiGoal
+      ? "①小さな相談AIの試作品を作る、②心理支援を研究する人に話を聞く、③別の大学院・研究室を3つ調べる"
+      : "①目的に近い人へ話を聞く、②20分で試作品を作る、③別の経路を3つ書き出す";
+    return {
+      role: "assistant",
+      source: SOURCES.rethink,
+      text: `整理すると、事実は「${reflection.fact}」。そこから「${reflection.interpretation}」という結論を引き出していて、その奥には「${reflection.value}」という大切な目的があります。\n\nここで『Think Again』の視点が役立ちます。「${reflection.fact}」ことは、一つの経路が閉じたという事実です。でも、「${reflection.value}」へのすべての経路が閉じた証拠ではありません。大学院は目的そのものではなく、目的へ近づくために試した仮説の一つだった、と捉え直せます。\n\n希望が戻るまで待つ代わりに、目的を確かめる小さな実験を置いてみましょう。今後30日で試すなら、${experiments}——どれが一番近いですか？`,
     };
   }
   if (/与え|助け|断れ|頼ま|疲れ|燃え尽|バーンアウト|giver|give/i.test(input)) {
@@ -87,6 +108,16 @@ function replyFor(input: string): Omit<Message, "id"> {
     return {
       role: "assistant", source: SOURCES.originals,
       text: "怖さや迷いがあることは、挑戦に向いていない証拠ではありません。『Originals』では、独創的な人も不安や疑いを抱え、よくない案も出しながら試し続けると捉えます。完成させる前提を外して、20分だけ試作品を作るなら、最初に何を置けそうでしょう？",
+    };
+  }
+  const isReflectionFollowUp = history.some(
+    (message) => message.role === "assistant" && message.text.includes("①いま分かっている事実"),
+  );
+  if (isReflectionFollowUp) {
+    return {
+      role: "assistant",
+      source: SOURCES.rethink,
+      text: `答えてくれてありがとうございます。「${input}」という言葉を、会話の次の材料として受け取りました。ここから同じ問いは繰り返しません。\n\nGrant氏の再考の視点で次に見たいのは、出来事そのものではなく、「その出来事が未来をどう決める」と予測しているかです。いま浮かんでいる未来の予測を一文にすると、どんな言葉になりますか？`,
     };
   }
   return {
@@ -123,7 +154,7 @@ export default function Home() {
     setInput("");
     setIsThinking(true);
     window.setTimeout(() => {
-      setMessages((current) => [...current, { id: Date.now() + 1, ...replyFor(text) }]);
+      setMessages((current) => [...current, { id: Date.now() + 1, ...replyFor(text, messages) }]);
       setIsThinking(false);
     }, 650);
   }
