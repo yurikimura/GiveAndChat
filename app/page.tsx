@@ -166,10 +166,10 @@ export default function Home() {
           <form className="composer" onSubmit={handleSubmit}>
             <label htmlFor="chat-input">いま感じていることを、まとまっていなくても大丈夫です</label>
             <div className="composer-row">
-              <textarea id="chat-input" onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(input); } }} placeholder="ここに書いてください…" rows={2} value={input} />
+              <textarea id="chat-input" onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing) { event.preventDefault(); submit(input); } }} placeholder="ここに書いてください…" rows={2} value={input} />
               <button disabled={!input.trim() || isThinking} type="submit" aria-label="メッセージを送信"><ArrowIcon /></button>
             </div>
-            <p>診断や治療を行うサービスではありません。緊急時は119・110、または公的な相談窓口へ。</p>
+            <p className="composer-help"><span>改行：Enter　送信：⌘/Ctrl + Enter</span><span>診断や治療を行うサービスではありません。緊急時は119・110、または公的な相談窓口へ。</span></p>
           </form>
         </div>
 

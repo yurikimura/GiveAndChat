@@ -56,7 +56,8 @@ button:focus-visible,a:focus-visible,textarea:focus-visible { outline:3px solid 
 .composer-row button { width:45px; height:45px; flex:0 0 auto; border-radius:50%; border:0; background:var(--sun); color:var(--ink); display:grid; place-items:center; cursor:pointer; transition:transform .2s,opacity .2s; }
 .composer-row button:hover { transform:translateX(2px); }
 .composer-row button:disabled { opacity:.4; cursor:default; transform:none; }
-.composer>p { margin:9px 4px 0; color:#809087; font-size:9px; line-height:1.5; }
+.composer-help { margin:9px 4px 0; color:#809087; font-size:9px; line-height:1.5; display:flex; justify-content:space-between; gap:16px; }
+.composer-help span:first-child { color:#60746a; font-weight:700; white-space:nowrap; }
 .source-panel { background:var(--forest); color:#f1f2e9; min-height:calc(100vh - 76px); }
 .source-panel-inner { position:sticky; top:76px; height:calc(100vh - 76px); padding:clamp(36px,5vh,62px) clamp(28px,3.5vw,54px); overflow-y:auto; }
 .source-panel .eyebrow { color:#9eb7ab; }
@@ -94,5 +95,6 @@ button:focus-visible,a:focus-visible,textarea:focus-visible { outline:3px solid 
 @media (max-width:480px) {
   .brand { font-size:18px; } .brand .leaf-mark { width:26px; height:26px; } .top-actions { gap:10px; }
   .conversation-column { padding-top:36px; } .intro h1 { font-size:40px; } .message.user { max-width:88%; } .composer-row { min-height:78px; }
+  .composer-help { display:block; } .composer-help span { display:block; } .composer-help span:last-child { margin-top:3px; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation-duration:.01ms!important; transition-duration:.01ms!important; } }
