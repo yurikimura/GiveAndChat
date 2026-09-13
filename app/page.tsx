@@ -90,6 +90,41 @@ function replyFor(input: string, history: Message[]): Omit<Message, "id"> {
       text: "いま、とても切迫した苦しさの中にいるのですね。ここで一人で抱え続けないでください。今すぐ自分を傷つける可能性がある場合は、119（救急）または110へ連絡し、安全な場所で信頼できる人にそばにいてもらってください。厚生労働省の相談先一覧では、電話やSNSの窓口を選べます。私は緊急支援の代わりにはなれませんが、連絡する相手や最初の一言を一緒に考えることはできます。いま、あなたの近くに連絡できる人はいますか？",
     };
   }
+  const lastAssistant = [...history].reverse().find((message) => message.role === "assistant");
+  const isUnsure = /^(?:(?:まだ|正直|よく)\s*)?(?:分|わ)からない(?:です)?[。．.!！…]*$/i.test(input.trim());
+  if (isUnsure) {
+    if (lastAssistant?.text.includes("未来の予測を一文")) {
+      return {
+        role: "assistant",
+        source: SOURCES.rethink,
+        text: "「分からない」で大丈夫です。未来を言い当てることが目的ではありません。Grant氏の再考の姿勢では、「分からない」は思考停止ではなく、確かめる余地を残す言葉です。\n\n予測を書く代わりに、いまの感覚に近いものを選ぶだけにしましょう。\n① もう道はない気がする\n② 別の道はあるかもしれないが、今は見えない\n③ 道を探す気力がいまはない\n\n番号だけでも大丈夫です。",
+      };
+    }
+    if (lastAssistant?.text.includes("どれが一番近いですか")) {
+      return {
+        role: "assistant",
+        source: SOURCES.potential,
+        text: "いま決められなくても大丈夫です。選択肢を決断として考えず、情報を得るための仮の実験として考えてみましょう。\n\n今日は「候補を一つメモする」だけで終えても構いません。それも前進です。いま必要なのは、①休むこと、②情報を少し集めること、③誰かに考えを話すこと——どれに近いでしょう？",
+      };
+    }
+    return {
+      role: "assistant",
+      source: SOURCES.rethink,
+      text: "分からないと率直に言ってくれてありがとうございます。答えを作る必要はありません。問いを小さくしましょう。いま最も近い感覚は、①悲しい、②悔しい、③不安、④何も考えたくない——どれでしょう？ 番号だけでも大丈夫です。",
+    };
+  }
+  const futureChoice = input.trim().match(/^(?:①|1|②|2|③|3)[。．.]?$/)?.[0]?.[0];
+  if (futureChoice && lastAssistant?.text.includes("① もう道はない気がする")) {
+    const choiceReplies: Record<string, string> = {
+      "1": "「道がない」と感じるほど、第一志望に大きな希望を託していたのですね。その感覚を否定せず、結論の確信度だけを確かめてみましょう。「道がない」という予測を0〜100%で表すと何%ですか？ そこから5%だけ下がるとしたら、どんな情報が必要でしょう？",
+      "①": "「道がない」と感じるほど、第一志望に大きな希望を託していたのですね。その感覚を否定せず、結論の確信度だけを確かめてみましょう。「道がない」という予測を0〜100%で表すと何%ですか？ そこから5%だけ下がるとしたら、どんな情報が必要でしょう？",
+      "2": "「道がない」のではなく「今は見えない」と区別できたのは大切です。見えない道は、情報を集めることで輪郭が出ます。心に寄り添うAIへ近づく経路を一つだけ調べるなら、別の研究室、企業、個人開発のどこから見てみたいですか？",
+      "②": "「道がない」のではなく「今は見えない」と区別できたのは大切です。見えない道は、情報を集めることで輪郭が出ます。心に寄り添うAIへ近づく経路を一つだけ調べるなら、別の研究室、企業、個人開発のどこから見てみたいですか？",
+      "3": "いまは道を探す力が残っていないのですね。前進を急がず、回復も目的へ向かう過程に含めましょう。今日は決断をせず、「心に寄り添うAIを作りたい」という一文だけ残して終えるのはどうでしょう？",
+      "③": "いまは道を探す力が残っていないのですね。前進を急がず、回復も目的へ向かう過程に含めましょう。今日は決断をせず、「心に寄り添うAIを作りたい」という一文だけ残して終えるのはどうでしょう？",
+    };
+    return { role: "assistant", source: SOURCES.rethink, text: choiceReplies[futureChoice] };
+  }
   const reflection = extractReflection(input, history);
   if (reflection) {
     const aiGoal = /AI|人工知能|チャットボット/i.test(reflection.value);
@@ -132,9 +167,7 @@ function replyFor(input: string, history: Message[]): Omit<Message, "id"> {
       text: "怖さや迷いがあることは、挑戦に向いていない証拠ではありません。『Originals』では、独創的な人も不安や疑いを抱え、よくない案も出しながら試し続けると捉えます。完成させる前提を外して、20分だけ試作品を作るなら、最初に何を置けそうでしょう？",
     };
   }
-  const isReflectionFollowUp = history.some(
-    (message) => message.role === "assistant" && message.text.includes("①いま分かっている事実"),
-  );
+  const isReflectionFollowUp = lastAssistant?.text.includes("①いま分かっている事実");
   if (isReflectionFollowUp) {
     return {
       role: "assistant",
